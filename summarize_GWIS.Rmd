@@ -23,12 +23,12 @@ Run using: rmarkdown::render("summarize_GWIS.Rmd", output_file="myfile.html",
                               params=list(GEM_file="my_GEM_results.out"))
 -->
 
-```{r setup, include=F}
-knitr::opts_chunk$set(echo=F, message=F, warning=F, dev="png", dpi=300)
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE, dev="png", dpi=300)
 suppressMessages(silent <- lapply(
   c("knitr", "kableExtra", "data.table", "tidyverse", "GenomicRanges"),
-  library, character.only=T))
-
+  library, character.only=TRUE))
+theme_set(theme_bw())
 # # fix a unicode error
 # Sys.setlocale(category = "LC_ALL","C.UTF-8")
 ```
@@ -46,13 +46,13 @@ colname_translations <- c(  # Inputs define names for relevant columns
 
 read_sumstats <- function(ss_file) {
   fread(ss_file, select=unname(colname_translations), 
-        data.table=F, stringsAsFactors=F) %>%
+        data.table=FALSE, stringsAsFactors=FALSE) %>%
     select(colname_translations[colname_translations %in% names(.)]) %>%
     mutate(chr=ifelse(chr == "X", chr, as.character(as.integer(chr))))
 }
 
 if (grepl("\\*", raw_sumstats_file)) {  # Pattern was provided (multiple files, possibly per-chromosome)
-  ss_files <- system(paste("ls", raw_sumstats_file), intern=T)  # Get vector of individual files from wildcard pattern
+  ss_files <- system(paste("ls", raw_sumstats_file), intern=TRUE)  # Get vector of individual files from wildcard pattern
   sumstats <- do.call(  # Read in all individual files and bind into a single dataset
     bind_rows,
     lapply(ss_files, read_sumstats)
@@ -91,12 +91,16 @@ prune_variants <- function(ss_df, pval_col, locus_width=500000) {
 
 ## Summary Manhattan plots
 
-```{r manhattan, fig.asp=1.2}
+* Dotted line corresponds to genome-wide significance (p = 5e-8)
+* "Joint" corresponds to the joint test of genetic main and interaction effect
+* "Marginal" corresponds to the genetic main effect from a model adjusted for the exposure but not including a genetic interaction term
+
+```{r manhattan, fig.asp=0.5}
 make_manhattan <- function(data, pval_col, main="") {
   mh_data <- data %>%
     dplyr::rename(SNP=varID, CHR=chr, POS=pos, P=pval_col) %>%
     filter(!is.na(P)) %>%
-    mutate(P = ifelse(P == 0, min(1e-300, min(P[P != 0], na.rm=T)), P),  # Remove P = 0
+    mutate(P = ifelse(P == 0, min(1e-300, min(P[P != 0], na.rm=TRUE)), P),  # Remove P = 0
            nlp = -log10(P))
   # Trim points in crowded regions (credit to RaMWAS package for code snippet)
   yfac = as.integer(mh_data$nlp * 100) + 1L
@@ -105,7 +109,7 @@ make_manhattan <- function(data, pval_col, main="") {
   ygroup <- split(seq_along(yfac), yfac)
   for (i in seq_along(ygroup)) {
     if (length(ygroup[[i]]) > 300) {
-      ygroup[[i]] <- sample(ygroup[[i]], size=300, replace=F)
+      ygroup[[i]] <- sample(ygroup[[i]], size=300, replace=FALSE)
     }
   }
   keep <- unlist(ygroup, use.names=FALSE)
@@ -123,7 +127,7 @@ make_manhattan <- function(data, pval_col, main="") {
            color = CHR,
     ) %>%
     arrange(as.integer(color), nlp) %>%
-    distinct(SNP, .keep_all=T)
+    distinct(SNP, .keep_all=TRUE)
   lims <- mh_data %>%
     group_by(CHR) %>%
     summarise(avg_coord = (min(x_coord) + max(x_coord)) / 2)
@@ -140,9 +144,9 @@ make_manhattan <- function(data, pval_col, main="") {
                        labels=c(1:16, 18, 20, 20, 22), 
                        expand=c(0,0)) +
     scale_y_continuous(name=expression(-log[10](italic(p)))) +
-    scale_colour_manual(values=newcols, guide=F) +
+    scale_colour_manual(values=newcols, guide=FALSE) +
     scale_fill_manual(name="Color", values=newcols) +
-    labs(title=main) +
+    labs(title=main, x="Chromosome") +
     theme(axis.title.x=element_blank(),
           axis.text.x=element_text(vjust = -1.5),
           panel.grid.minor=element_blank(),
@@ -158,7 +162,9 @@ make_manhattan(sumstats, pval_col="p_marg", main="Marginal")
 
 ## Interaction test
 
-```{r qq}
+* A simple distance-based pruning method is used here, with total window size of `r params$prune_locus_width / 1000` kb (`r params$prune_locus_width / 1000 / 2` kb on each side).
+
+```{r qq, out.width="70%"}
 calc_lambda <- function(x, p=0.5){
   # Calculate genomic inflation lambda value
   x = x[!is.na(x)]
@@ -200,7 +206,7 @@ make_qq(sumstats, "p_int", "QQ plot for interaction effect")
 ```
 
 ```{r interaction-loci}
-if (min(sumstats$p_int, na.rm=T) > as.numeric(params$prune_threshold_int)) {
+if (min(sumstats$p_int, na.rm=TRUE) > as.numeric(params$prune_threshold_int)) {
   print("Skipping interaction pruning (no variants below pruning threshold)")
 } else {
   sumstats_int_pruned <- sumstats %>%
@@ -213,7 +219,7 @@ if (min(sumstats$p_int, na.rm=T) > as.numeric(params$prune_threshold_int)) {
            index_var=strtrim(index_var, 30)) %>%
     select(index_var, chr, pos, P_int=p_int, `G-W interaction effect`=gw_int,
            P_joint=p_joint, P_marginal=p_marg) %>%
-    kable(booktabs=T, longtable=T,
+    kable(booktabs=TRUE, longtable=TRUE,
           caption="Interaction test loci") %>%
     kable_styling(latex_options="scale_down") %>%
     column_spec(1, width="10cm")
@@ -222,7 +228,7 @@ if (min(sumstats$p_int, na.rm=T) > as.numeric(params$prune_threshold_int)) {
 
 ## Joint test
 
-```{r joint-plot}
+```{r joint-plot, fig.asp=0.6}
 make_joint_plot <- function(data,
                             boundary_marg=as.numeric(params$gw_threshold), 
                             boundary_joint=as.numeric(params$gw_threshold),
@@ -238,13 +244,13 @@ make_joint_plot <- function(data,
     mutate(nlp_marg=-log10(p_marg),
            nlp_joint=-log10(p_joint),
            nlp_int=-log10(p_int),
-           highlight=nlp_int > -log10(5e-8))
+           highlight=factor(nlp_int > -log10(5e-8), levels=c(F, T)))
   
   # keep <- sample(which(data$p_marg < 1e-4 & data$p_joint < 1e-4), size=100)
   
   nlp_theoretical <- -log10(
-    pchisq(qchisq(10 ** (-data$nlp_marg), df=1, lower.tail=F), 
-           df=2, lower.tail=F)
+    pchisq(qchisq(10 ** (-data$nlp_marg), df=1, lower.tail=FALSE), 
+           df=2, lower.tail=FALSE)
   )
   
   ggplot(data, aes(x=nlp_marg, y=nlp_joint, color=highlight)) +
@@ -253,20 +259,18 @@ make_joint_plot <- function(data,
     geom_hline(yintercept=-log10(boundary_joint), linetype="dotted") +
     geom_line(aes(y=nlp_theoretical), linetype="dashed", color="black") +
     scale_color_manual(name="Genome-wide\nsignificant\ninteraction test", 
-                       values=c("gray", "chocolate")) +
+                       values=c("gray", "chocolate"), labels=c("No", "Yes"),
+                       drop=FALSE) +
     labs(x=expression(-log[10](italic(p)) * " for marginal test"),
          y=expression(-log[10](italic(p)) * " for joint test"),
          title=main)
 }
 
-make_joint_plot(
-  sumstats,
-  main="Interaction joint plot"
-)
+make_joint_plot(sumstats)
 ```
 
 ```{r joint-loci}
-if (min(sumstats$p_joint, na.rm=T) > as.numeric(params$prune_threshold_joint)) {
+if (min(sumstats$p_joint, na.rm=TRUE) > as.numeric(params$prune_threshold_joint)) {
   print("Skipping joint pruning (no variants below pruning threshold)")
 } else {
   sumstats_joint_pruned <- sumstats %>%
@@ -282,26 +286,30 @@ if (min(sumstats$p_joint, na.rm=T) > as.numeric(params$prune_threshold_joint)) {
   if (nrow(joint_locus_tbl) == 0) {  # No joint loci? Print message.
     print("No genome-wide loci uncovered using the joint test.")
   } else if (nrow(joint_locus_tbl) < 50) {  # <50 joint loci? Print info for each locus
-    kable(joint_locus_tbl, booktabs=T,
-          caption="Joint test loci")
+    kable(joint_locus_tbl, booktabs=TRUE,
+          caption="Joint test loci") %>%
+      kable_styling(full_width=FALSE)
   } else {  # >=50 joint loci? Print counts of joint/marginal overlap
-    joint_locus_cnt_tbl <- data.frame(
-      `Joint test locus count`=c(
-        sum(joint_locus_tbl$`Genome-wide marginal locus`),
-        sum(!joint_locus_tbl$`Genome-wide marginal locus`)
-      )
-    )
-    rownames(joint_locus_cnt_tbl) <- c("In a marginal genetic effect locus",
-                                       "Not in a marginal genetic effect locus")
-    kable(joint_locus_cnt_tbl, booktabs=T,
-          caption="Count of genome-wide significant joint test loci")
+    joint_locus_cnt_tbl <- tibble(
+      c("In a marginal genetic effect locus",
+        "Not in a marginal genetic effect locus"),
+      c(sum(joint_locus_tbl$`Genome-wide marginal locus`),
+        sum(!joint_locus_tbl$`Genome-wide marginal locus`))
+    ) %>%
+      setNames(c("", "Joint test locus count"))
+    kable(joint_locus_cnt_tbl, booktabs=TRUE,
+          caption="Count of genome-wide significant joint test loci") %>%
+      kable_styling(full_width=FALSE)
   }
 }
 ```
 
+--------------------------------------------------------------------------------
+
 ```{r dump-parameters}
 tibble(Parameter=names(params),
        Value=unlist(params)) %>%
-  kable(booktabs=T,
-        caption="Summarization report parameters")
+  kable(booktabs=TRUE,
+        caption="Summarization report parameters") %>%
+  kable_styling(full_width=FALSE)
 ```
