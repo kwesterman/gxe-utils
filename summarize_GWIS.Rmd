@@ -3,11 +3,12 @@ output: html_document
 title: Genome-wide gene-environment interaction testing results summary
 params:
   GEM_file: "path_to_GEM_file"
-  variant_id_col: "rsID"
+  variant_id_col: "RSID"
   chromosome_col: "CHR"
   position_col: "POS"
   ref_allele_col: "Non_Effect_Allele"
   alt_allele_col: "Effect_Allele"
+  allele_freq_col: "AF"
   beta_interaction_col: "Beta_Interaction_1"
   p_interaction_col: "P_Value_Interaction"
   p_joint_col: "P_Value_Joint"
@@ -39,6 +40,7 @@ raw_sumstats_file <- params$GEM_file
 colname_translations <- c(  # Inputs define names for relevant columns
   varID=params$variant_id_col, chr=params$chromosome_col, pos=params$position_col,
   ref=params$ref_allele_col, alt=params$alt_allele_col,
+  af=params$allele_freq_col,
   beta_int=params$beta_interaction_col,
   p_int=params$p_interaction_col, p_joint=params$p_joint_col,
   p_marg=params$p_marginal_col
