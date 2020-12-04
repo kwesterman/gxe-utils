@@ -123,6 +123,7 @@ make_manhattan <- function(data, pval_col, main="") {
     arrange(CHR, POS) %>%
     mutate(pos_idx = seq(1, nrow(.)))
   chr_lengths <- sapply(1:22, function(chr) with(mh_data, max(POS[CHR == chr])))
+  chr_lengths <- ifelse(is.infinite(chr_lengths), 0, chr_lengths)
   chr_start_pos <- cumsum(chr_lengths) - chr_lengths
   mh_data <- mh_data %>%
     mutate(x_coord = chr_start_pos[CHR] + POS,
