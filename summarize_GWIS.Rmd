@@ -9,6 +9,7 @@ params:
   ref_allele_col: "Non_Effect_Allele"
   alt_allele_col: "Effect_Allele"
   allele_freq_col: "AF"
+  maf_filter: 0
   beta_interaction_col: "Beta_Interaction_1"
   p_interaction_col: "P_Value_Interaction"
   p_joint_col: "P_Value_Joint"
@@ -65,6 +66,10 @@ if (grepl("\\*", raw_sumstats_file)) {  # Pattern was provided (multiple files, 
 } else {  # Single filename provided
   sumstats <- read_sumstats(raw_sumstats_file)
 }
+
+if (!is.null(params$maf_filter)) {
+  sumstats <- filter(sumstats, pmin(af, 1 - af) > params$maf_filter)
+}
 ```
 
 ```{r pruning-functions}
@@ -91,13 +96,7 @@ prune_variants <- function(ss_df, pval_col, locus_width=500000) {
 }
 ```
 
-## Summary Manhattan plots
-
-* Dotted line corresponds to genome-wide significance (p = 5e-8)
-* "Joint" corresponds to the joint test of genetic main and interaction effect
-* "Marginal" corresponds to the genetic main effect from a model adjusted for the exposure but not including a genetic interaction term
-
-```{r manhattan, fig.asp=0.5}
+```{r plotting-functions}
 make_manhattan <- function(data, pval_col, main="") {
   mh_data <- data %>%
     dplyr::rename(SNP=varID, CHR=chr, POS=pos, P=pval_col) %>%
@@ -157,17 +156,6 @@ make_manhattan <- function(data, pval_col, main="") {
   plt
 }
 
-par(mar=c(2, 6, 4, 1), mfrow=c(3, 1))
-make_manhattan(sumstats, pval_col="p_int", main="Interaction")
-make_manhattan(sumstats, pval_col="p_joint", main="Joint")
-make_manhattan(sumstats, pval_col="p_marg", main="Marginal")
-```
-
-## Interaction test
-
-* A simple distance-based pruning method is used here, with total window size of `r params$prune_locus_width / 1000` kb (`r params$prune_locus_width / 1000 / 2` kb on each side).
-
-```{r qq, out.width="70%"}
 calc_lambda <- function(x, p=0.5){
   # Calculate genomic inflation lambda value
   x = x[!is.na(x)]
@@ -203,9 +191,28 @@ make_qq <- function(data, pval_col, main=""){
          bquote(lambda == .(calc_lambda(data[[pval_col]]))), 
          cex=0.9, bty="n")
 }
+```
 
+## Summary Manhattan plots
+
+* Dotted line corresponds to genome-wide significance (p = 5e-8)
+* "Joint" corresponds to the joint test of genetic main and interaction effect
+* "Marginal" corresponds to the genetic main effect from a model adjusted for the exposure but not including a genetic interaction term
+
+```{r manhattan, fig.asp=0.5}
+par(mar=c(2, 6, 4, 1), mfrow=c(3, 1))
+make_manhattan(sumstats, pval_col="p_int", main="Interaction")
+make_manhattan(sumstats, pval_col="p_joint", main="Joint")
+make_manhattan(sumstats, pval_col="p_marg", main="Marginal")
+```
+
+## Interaction test
+
+* A simple distance-based pruning method is used here, with total window size of `r params$prune_locus_width / 1000` kb (`r params$prune_locus_width / 1000 / 2` kb on each side).
+
+```{r interaction-qq, out.width="70%"}
 par(mar=c(5, 5, 4, 2))
-make_qq(sumstats, "p_int", "QQ plot for interaction effect")
+make_qq(sumstats, "p_int", "QQ plot for interaction test")
 ```
 
 ```{r interaction-loci}
@@ -230,6 +237,11 @@ if (min(sumstats$p_int, na.rm=TRUE) > as.numeric(params$prune_threshold_int)) {
 ```
 
 ## Joint test
+
+```{r joint-qq, out.width="70%"}
+par(mar=c(5, 5, 4, 2))
+make_qq(sumstats, "p_joint", "QQ plot for joint test")
+```
 
 ```{r joint-plot, fig.asp=0.6}
 make_joint_plot <- function(data,
