@@ -315,7 +315,7 @@ if (min(sumstats$p_joint, na.rm=TRUE) > as.numeric(params$prune_threshold_joint)
         sum(!joint_locus_tbl$`Genome-wide marginal locus`))
     ) %>%
       setNames(c("", "Joint test locus count"))
-    
+  
     joint_locus_cnt_tbl <- joint_locus_cnt_tbl %>% 
         mutate(P_joint = as.character(format(P_joint, digits=3, scientific=TRUE)))
     kable(joint_locus_cnt_tbl, booktabs=TRUE,
