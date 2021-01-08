@@ -1,0 +1,141 @@
+---
+output: html_document
+title: Phnotype QC for gene-environment interaction testing
+params:
+  phenotype_file: "path_to_phenotype_file"
+  outcome: "outcome_name"
+  exposure: "exposure_name"
+  groups: "character_vector_of_group_names"
+---
+
+<!--
+Run using: rmarkdown::render("GxE_phenotype_QC.Rmd", output_file="myfile.html",
+                              params=list(phenotype_file="my_phenofile.csv"))
+-->
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, message=FALSE, warning=FALSE, dev="png")
+suppressMessages(silent <- lapply(
+  c("knitr", "kableExtra", "data.table", "tidyverse"),
+  library, character.only=TRUE))
+theme_set(theme_bw())
+```
+
+```{r load-data}
+if (grepl("\\.rds", params$phenotype_file)) {  # Binary .rds input file
+  phenos <- readRDS(params$phenotype_file)
+} else if (grepl("\\.RData", params$phenotype_file, ignore.case=TRUE)) {  # Binary .RData input file
+  phenos <- get(load(params$phenotype_file))
+} else {  # Otherwise, assume a flat file and let fread guess the delimiter
+  phenos <- fread(params$phenotype_file, stringsAsFactors=FALSE, data.table=FALSE)
+}
+
+phenos <- filter(phenos, !is.na(.data[[outcome]]), !is.na(.data[[exposure]]))
+if (length(unique(phenos[[params$outcome]])) <= 2) {  # Outcome is binary
+  bin_outcome <- TRUE
+  phenos[[params$outcome]] <- factor(phenos[[params$outcome]])
+} else {
+  bin_outcome <- FALSE
+}
+if (length(unique(phenos[[params$exposure]])) <= 2) {  # Exposure is binary
+  bin_exposure <- TRUE
+  phenos[[params$exposure]] <- factor(phenos[[params$exposure]])
+} else {
+  bin_exposure <- FALSE
+}
+phenos <- mutate_at(phenos, vars(all_of(params$groups)), factor)  # All stratification groups as factors
+
+outcome <- params$outcome
+exposure <- params$exposure
+```
+
+```{r define-functions}
+make_hist <- function(pheno, df) {
+  stat_type <- if (is.factor(df[[pheno]])) "count" else "bin"
+  df %>%
+    filter(!is.na(.data[[pheno]])) %>%
+    ggplot(aes_string(x=pheno)) +
+    geom_histogram(stat=stat_type)
+}
+
+make_exposure_outcome_plt <- function(pheno, xvar, df) {
+  if (!bin_outcome & !bin_exposure) {
+      ggplot(df, aes_string(x=xvar, y=pheno)) +
+      geom_smooth()
+  } else if (bin_outcome & !bin_exposure) {
+      ggplot(df, aes_string(x=pheno, y=xvar)) +
+      geom_boxplot()
+  } else if (!bin_outcome & bin_exposure) {
+      ggplot(df, aes_string(x=xvar, y=pheno)) +
+      geom_boxplot()
+  } else {
+      ggplot(df, aes_string(x=pheno, fill=xvar)) +
+      geom_histogram(stat="count", position="dodge")
+  }
+}
+
+make_grouped_hist <- function(pheno, grp, df) {
+  df <- filter(df, !is.na(.data[[pheno]]))
+  if (is.factor(df[[pheno]])) {
+    df %>%
+      group_by_at(grp) %>%
+      summarise(fraction = sum(.data[[pheno]] == 1) / n()) %>%
+      ggplot(aes_string(x=grp, y="fraction")) +
+      geom_bar(stat="identity", position="dodge", width=0.8)
+  } else {
+    df %>%
+      mutate_at(grp, ~factor(.)) %>%
+      ggplot(aes_string(x=pheno, fill=grp)) +
+      geom_histogram(alpha=0.3, position="identity")
+  }
+}
+
+test_assoc <- function(pheno, xvar, df) {
+  form <- as.formula(paste0(pheno, " ~ ", xvar))
+  fam <- if(is.factor(df[[pheno]])) "binomial" else "gaussian"
+  broom::tidy(glm(form, data=df, family=fam)) 
+}
+```
+
+# Outcome & exposure
+
+```{r raw-histograms}
+outcome_hist <- make_hist(outcome, phenos)
+exposure_hist <- make_hist(exposure, phenos)
+
+outcome_hist
+exposure_hist
+```
+
+```{r exposure-outcome-relationship}
+make_exposure_outcome_plt(outcome, exposure, phenos)
+test_assoc(outcome, exposure, phenos)
+```
+
+# Outcome & strata
+
+```{r group-outcome-relationships}
+for (grp in params$groups) {
+  print(make_grouped_hist(outcome, grp, phenos))
+  print(test_assoc(outcome, grp, phenos))
+}
+```
+
+# Exposure & strata
+
+```{r group-exposure-relationships}
+for (grp in params$groups) {
+  print(make_grouped_hist(exposure, grp, phenos))
+  print(test_assoc(exposure, grp, phenos))
+}
+```
+
+--------------------------------------------------------------------------------
+
+```{r dump-parameters}
+tibble(Parameter=names(params),
+       Value=unlist(lapply(params, paste, collapse=", "))) %>%
+  kable(booktabs=TRUE,
+        caption="QC report parameters") %>%
+  kable_styling(full_width=FALSE)
+```
