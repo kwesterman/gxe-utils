@@ -294,13 +294,16 @@ if (min(sumstats$p_joint, na.rm=TRUE) > as.numeric(params$prune_threshold_joint)
   
   joint_locus_tbl <- sumstats_joint_pruned %>%
     mutate(gw_joint=p_joint < 5e-8,
-           gw_marg=p_marg < 5e-8) %>%
+           gw_marg=p_marg < 5e-8,
+           index_var=strtrim(index_var, 30)) %>%
     select(index_var, chr, pos, P=p_joint, `Genome-wide joint locus`=gw_joint,
            `Genome-wide marginal locus`=gw_marg)
   
   if (nrow(joint_locus_tbl) == 0) {  # No joint loci? Print message.
     print("No genome-wide loci uncovered using the joint test.")
   } else if (nrow(joint_locus_tbl) < 50) {  # <50 joint loci? Print info for each locus
+    joint_locus_tbl <- joint_locus_tbl %>% 
+          mutate(P_joint = as.character(format(P_joint, digits=3, scientific=TRUE)))
     kable(joint_locus_tbl, booktabs=TRUE,
           caption="Joint test loci") %>%
       kable_styling(full_width=FALSE)
@@ -312,6 +315,9 @@ if (min(sumstats$p_joint, na.rm=TRUE) > as.numeric(params$prune_threshold_joint)
         sum(!joint_locus_tbl$`Genome-wide marginal locus`))
     ) %>%
       setNames(c("", "Joint test locus count"))
+  
+    joint_locus_cnt_tbl <- joint_locus_cnt_tbl %>% 
+        mutate(P_joint = as.character(format(P_joint, digits=3, scientific=TRUE)))
     kable(joint_locus_cnt_tbl, booktabs=TRUE,
           caption="Count of genome-wide significant joint test loci") %>%
       kable_styling(full_width=FALSE)

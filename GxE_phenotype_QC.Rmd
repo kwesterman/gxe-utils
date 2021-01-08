@@ -1,6 +1,6 @@
 ---
 output: html_document
-title: Phnotype QC for gene-environment interaction testing
+title: Phenotype QC for gene-environment interaction testing
 params:
   phenotype_file: "path_to_phenotype_file"
   outcome: "outcome_name"
